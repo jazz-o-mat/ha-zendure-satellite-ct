@@ -5,7 +5,8 @@ Custom component for Home Assistant that reads current power consumption from a 
 ## Features
 
 - Reports current power consumption in Watts (W)
-- Updates every 30 seconds
+- Polls the API every 30 seconds for fast state updates in HA
+- **Effective data resolution: ~60 seconds** — the Zendure cloud API publishes new measurements once per minute, so the displayed value changes at most every 60 seconds regardless of polling interval
 - Uses Zendure cloud API (EU region)
 
 ## Installation via HACS
