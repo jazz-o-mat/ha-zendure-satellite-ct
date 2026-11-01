@@ -9,6 +9,16 @@ Custom component for Home Assistant that reads current power consumption from a 
 - **Effective data resolution: ~60 seconds** — the Zendure cloud API publishes new measurements once per minute, so the displayed value changes at most every 60 seconds regardless of polling interval
 - Uses Zendure cloud API (EU region)
 
+## Prerequisites
+
+This integration logs in to the Zendure cloud with account credentials. Because logging in anywhere rotates the account's token (invalidating any previous session), you should **not** use your primary Zendure account — a login from your phone would break Home Assistant and vice versa.
+
+1. **Create a second, dedicated Zendure account** (a separate e-mail) that is used *only* by Home Assistant and nowhere else.
+2. **Share the Satellite CT device** from your primary account to this second account (in the Zendure app: device → share). The second account only needs access to the CT, nothing else.
+3. Use the second account's e-mail and password in the configuration below.
+
+> Without the device being shared to the second account, the integration will authenticate but find no CT data.
+
 ## Installation via HACS
 
 1. Add this repository as a custom repository in HACS:  
