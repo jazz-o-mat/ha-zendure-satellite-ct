@@ -116,3 +116,20 @@ The server currently accepts **any** non-empty `appVersion` value, so the defaul
 ```
 
 The only version-dependent part that can actually break is the embedded RSA public key. If a future Zendure app ships a new key, extract it from the new APK (`strings libzen_native.so | grep '^MI[IG]'`, in the `arm64-v8a` split) and update the `ZENDURE_PUBKEY_B64` constant in `sensor.py`.
+
+## Troubleshooting
+
+Check **Settings → System → Logs** in Home Assistant (filter for `zendure_satellite_ct`) — the integration logs the concrete reason there.
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| Sensor `unavailable` right after setup | Wrong credentials, or `device_id` not on this account | Run `tools/get_device_id.py` to confirm both the login and the ID. |
+| Log: `Zendure-Login fehlgeschlagen: Account does not exist or the password is incorrect` | Wrong `username`/`password` | Check `secrets.yaml`. Note the login uses the Zendure **account** credentials, not an app token. |
+| Log: `Zendure API lehnt Token auch nach Neu-Login ab` | Token valid but device not visible to this account | Share the Satellite CT to this account (see [Prerequisites](#prerequisites)). |
+| `get_device_id.py` prints *No devices found* | CT not shared to this account | Share the device from your primary account in the Zendure app. |
+| Sensor worked, then went `unavailable` and recovered | Normal — you logged in elsewhere with this account, the token rotated | The integration re-logs in automatically on the next poll. Keep this account HA-only. |
+| Sensor shows a stale value | Expected — the cloud API only publishes a new measurement once per minute | Nothing to fix; see *Features*. |
+| Log mentions `cryptography` import error | Very unusual (it ships with Home Assistant) | Restart HA; if it persists, report an issue. |
+| Login fails only after a Zendure app update, for everyone | Zendure rotated the signing key or enforces a newer version | Update `app_version`, or re-extract the RSA public key (see above). |
+
+When reporting an issue, include the log line (it never contains your password) and your Home Assistant version.
