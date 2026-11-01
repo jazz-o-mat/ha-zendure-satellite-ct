@@ -22,7 +22,30 @@ Copy `custom_components/zendure_satellite_ct/` to your HA `/config/custom_compon
 
 ## Configuration
 
+### Recommended: username + password (auto-login)
+
+The integration logs in to the Zendure cloud itself and refreshes the token automatically when it expires. No more mitmproxy, no emulator, no manual token updates.
+
 Add to `configuration.yaml`:
+
+```yaml
+sensor:
+  - platform: zendure_satellite_ct
+    username: !secret zendure_username
+    password: !secret zendure_password
+    device_id: YOUR_DEVICE_ID
+```
+
+Add to `secrets.yaml`:
+
+```yaml
+zendure_username: "second-account@example.com"
+zendure_password: "your-password"
+```
+
+> **Tip:** Use a dedicated second Zendure account that only shares the CT device. Logging in anywhere else with that account rotates the token — with auto-login the integration simply logs back in on the next poll, but a shared-only account keeps things clean.
+
+### Alternative: static bearer token (legacy)
 
 ```yaml
 sensor:
@@ -31,27 +54,31 @@ sensor:
     device_id: YOUR_DEVICE_ID
 ```
 
-Add to `secrets.yaml`:
-
 ```yaml
-zendure_bearer_token: "userId:token"
+zendure_bearer_token: "userId:UUID"
 ```
 
-### Getting the bearer token
-
-The bearer token is obtained via mitmproxy from the Zendure Android app. It has the format `userId:UUID`.
-
-> **Tip:** Use a dedicated second Zendure account that shares only the CT device — this prevents your main account logins from invalidating the token.
+The token is obtained via mitmproxy from the Zendure Android app (format `userId:UUID`). This mode does **not** refresh automatically — when the token expires the sensor goes `unavailable` until you update it. Prefer the username/password mode above.
 
 ### Finding your device ID
 
-The device ID is visible in mitmproxy traffic when opening the CT view in the Zendure app, or in the API response body.
+The device ID is visible in the API response body, or in mitmproxy traffic when opening the CT view in the Zendure app.
 
 ## Options
 
 | Key | Required | Default | Description |
 |-----|----------|---------|-------------|
-| `bearer_token` | yes | — | Zendure blade-auth token (`userId:UUID`) |
+| `username` | yes* | — | Zendure account e-mail (enables auto-login) |
+| `password` | yes* | — | Zendure account password |
+| `bearer_token` | yes* | — | Static blade-auth token (`userId:UUID`); alternative to username/password |
 | `device_id` | yes | — | Numeric device ID of the Satellite CT |
 | `name` | no | `Satellite CT Stromverbrauch` | Entity friendly name |
 | `zone` | no | `Europe/Berlin` | Timezone for API queries |
+
+\* Provide **either** `username` + `password` (recommended) **or** `bearer_token`.
+
+## How the auto-login works
+
+The Zendure login endpoint (`POST /eu/auth/app/token`) requires a `sign` header: `Base64(RSA/PKCS1v15(publicKey, "<appVersion>./auth/app/token/<unix-seconds>"))`, using a 1024-bit RSA public key embedded in the app. The integration reproduces this signature (public key + `appVersion` are constants in `sensor.py`), logs in with the account credentials, and uses the returned `accessToken` as the blade-auth token. On a `401`/expired token it logs in again and retries. The data endpoint itself does not require the signature.
+
+If a future Zendure app update changes the public key or the `appVersion` format, update the `ZENDURE_PUBKEY_B64` and `APP_VERSION` constants in `sensor.py`.

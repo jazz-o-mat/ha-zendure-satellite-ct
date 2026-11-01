@@ -1,7 +1,7 @@
 {
   "domain": "zendure_satellite_ct",
   "name": "Zendure Satellite CT",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "requirements": [],
   "dependencies": [],
   "codeowners": [],
