@@ -74,6 +74,7 @@ The device ID is visible in the API response body, or in mitmproxy traffic when 
 | `device_id` | yes | — | Numeric device ID of the Satellite CT |
 | `name` | no | `Satellite CT Stromverbrauch` | Entity friendly name |
 | `zone` | no | `Europe/Berlin` | Timezone for API queries |
+| `app_version` | no | `5.8.3` | App version string embedded in the login signature (see below) |
 
 \* Provide **either** `username` + `password` (recommended) **or** `bearer_token`.
 
@@ -81,4 +82,10 @@ The device ID is visible in the API response body, or in mitmproxy traffic when 
 
 The Zendure login endpoint (`POST /eu/auth/app/token`) requires a `sign` header: `Base64(RSA/PKCS1v15(publicKey, "<appVersion>./auth/app/token/<unix-seconds>"))`, using a 1024-bit RSA public key embedded in the app. The integration reproduces this signature (public key + `appVersion` are constants in `sensor.py`), logs in with the account credentials, and uses the returned `accessToken` as the blade-auth token. On a `401`/expired token it logs in again and retries. The data endpoint itself does not require the signature.
 
-If a future Zendure app update changes the public key or the `appVersion` format, update the `ZENDURE_PUBKEY_B64` and `APP_VERSION` constants in `sensor.py`.
+The server currently accepts **any** non-empty `appVersion` value, so the default (`5.8.3`) needs no maintenance even though it is an old app version. Should Zendure ever start enforcing a minimum version, override it without touching code:
+
+```yaml
+    app_version: "6.0.0"
+```
+
+The only version-dependent part that can actually break is the embedded RSA public key. If a future Zendure app ships a new key, extract it from the new APK (`strings libzen_native.so | grep '^MI[IG]'`, in the `arm64-v8a` split) and update the `ZENDURE_PUBKEY_B64` constant in `sensor.py`.

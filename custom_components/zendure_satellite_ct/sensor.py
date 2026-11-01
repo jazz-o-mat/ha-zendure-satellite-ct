@@ -33,6 +33,7 @@ _LOGGER = logging.getLogger(__name__)
 CONF_BEARER_TOKEN = "bearer_token"
 CONF_DEVICE_ID = "device_id"
 CONF_ZONE = "zone"
+CONF_APP_VERSION = "app_version"
 
 DEFAULT_NAME = "Satellite CT Stromverbrauch"
 DEFAULT_ZONE = "Europe/Berlin"
@@ -43,9 +44,12 @@ ENERGY_URL = BASE_URL + "tdengine/device/smartct/energy"
 LOGIN_URL = BASE_URL + "auth/app/token"
 LOGIN_PATH = "auth/app/token"  # Pfad-Teil für die sign-Signatur
 
-# appVersion, die in der sign-Signatur mitverschlüsselt wird. Stammt aus der
-# Zendure-Android-App (versionName). Server validiert sie gegen den sign-Header.
-APP_VERSION = "5.8.3"
+# appVersion, die in der sign-Signatur mitverschlüsselt wird (= versionName der
+# Zendure-Android-App). Der Server akzeptiert derzeit jeden nicht-leeren Wert,
+# der Default muss also nicht gepflegt werden. Falls Zendure künftig eine
+# bestimmte Mindestversion erzwingt, lässt sich der Wert per `app_version` in
+# der configuration.yaml überschreiben, ohne diese Datei anzufassen.
+DEFAULT_APP_VERSION = "5.8.3"
 
 # RSA-Public-Key (1024 bit, SPKI/DER base64) aus libzen_native.so der Zendure-App.
 # Wird benutzt, um den sign-Header für den Login zu erzeugen (RSA/ECB/PKCS1Padding).
@@ -64,13 +68,14 @@ PLATFORM_SCHEMA = vol.All(
             vol.Required(CONF_DEVICE_ID): vol.Coerce(int),
             vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
             vol.Optional(CONF_ZONE, default=DEFAULT_ZONE): cv.string,
+            vol.Optional(CONF_APP_VERSION, default=DEFAULT_APP_VERSION): cv.string,
         }
     ),
     cv.has_at_least_one_key(CONF_BEARER_TOKEN, CONF_USERNAME),
 )
 
 
-def _build_sign(path: str, timestamp: int) -> str:
+def _build_sign(app_version: str, path: str, timestamp: int) -> str:
     """Erzeuge den sign-Header: Base64(RSA/PKCS1v15(pubkey, 'appVer./path/ts')).
 
     Läuft synchron (RSA-1024-Verschlüsselung, wenige Mikrosekunden) und wird vom
@@ -80,7 +85,7 @@ def _build_sign(path: str, timestamp: int) -> str:
     from cryptography.hazmat.primitives.serialization import load_der_public_key
 
     pub = load_der_public_key(base64.b64decode(ZENDURE_PUBKEY_B64))
-    plain = f"{APP_VERSION}./{path}/{timestamp}".encode()
+    plain = f"{app_version}./{path}/{timestamp}".encode()
     ciphertext = pub.encrypt(plain, padding.PKCS1v15())
     return base64.b64encode(ciphertext).decode()
 
@@ -105,6 +110,7 @@ async def async_setup_platform(
         bearer_token=config.get(CONF_BEARER_TOKEN),
         username=config.get(CONF_USERNAME),
         password=config.get(CONF_PASSWORD),
+        app_version=config[CONF_APP_VERSION],
     )
     await coordinator.async_refresh()
 
@@ -115,7 +121,16 @@ class ZendureCTCoordinator(DataUpdateCoordinator):
     """Coordinator für Zendure Satellite CT API-Polling mit Auto-Login."""
 
     def __init__(
-        self, hass, session, *, device_id, zone, bearer_token, username, password
+        self,
+        hass,
+        session,
+        *,
+        device_id,
+        zone,
+        bearer_token,
+        username,
+        password,
+        app_version,
     ):
         super().__init__(
             hass,
@@ -128,6 +143,7 @@ class ZendureCTCoordinator(DataUpdateCoordinator):
         self._zone = zone
         self._username = username
         self._password = password
+        self._app_version = app_version
         # Statischer Token aus der Konfiguration (optional). Wird bei
         # username/password-Betrieb durch den Login-Token überschrieben.
         self._token = bearer_token
@@ -147,11 +163,11 @@ class ZendureCTCoordinator(DataUpdateCoordinator):
         async with self._login_lock:
             timestamp = int(time.time())  # Sekunden (App: currentTimeMillis()/1000)
             sign = await self.hass.async_add_executor_job(
-                _build_sign, LOGIN_PATH, timestamp
+                _build_sign, self._app_version, LOGIN_PATH, timestamp
             )
             headers = {
                 "Content-Type": "application/json",
-                "appVersion": APP_VERSION,
+                "appVersion": self._app_version,
                 "timestamps": str(timestamp),
                 "sign": sign,
                 "style": "1",
