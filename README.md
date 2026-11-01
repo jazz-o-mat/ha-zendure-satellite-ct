@@ -72,7 +72,24 @@ The token is obtained via mitmproxy from the Zendure Android app (format `userId
 
 ### Finding your device ID
 
-The device ID is visible in the API response body, or in mitmproxy traffic when opening the CT view in the Zendure app.
+Use the helper script with the same credentials you put in `secrets.yaml` — no mitmproxy or emulator needed. It logs in and lists every device on the account with its numeric ID:
+
+```bash
+pip install cryptography
+python3 tools/get_device_id.py your-account@example.com
+```
+
+You are prompted for the password (not stored). Example output:
+
+```
+Found 1 device(s):
+
+  device_id: 12345
+      name:  Monitor CT  (Satellite Monitor CT)
+      serial:XXXXXXXXXXXXXXX
+```
+
+Put that `device_id` value into your configuration. If the list is empty, the Satellite CT has not been shared to this account yet (see [Prerequisites](#prerequisites)).
 
 ## Options
 
