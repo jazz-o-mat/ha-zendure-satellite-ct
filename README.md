@@ -140,4 +140,6 @@ This is an **unofficial**, community-built integration. It is **not affiliated w
 
 The integration authenticates against Zendure's app API using credentials **you** own, to read data from **your own** device — i.e. for interoperability with your own hardware. Accessing the API this way may nevertheless be contrary to Zendure's terms of service; the most likely consequence of any objection would be the affected account being limited, which is why a dedicated, HA-only second account is recommended.
 
+Official developer-API support for the Satellite CT was requested in Zendure's repository ([Zendure-HA#1447](https://github.com/Zendure/Zendure-HA/issues/1447)); the request remained unanswered and the issue was closed. As the Satellite CT is not covered by Zendure's official developer API, this interoperability integration is currently the only way to read its data in Home Assistant.
+
 Use at your own risk. The authors provide this software "as is", without warranty, and accept no liability for account restrictions, data issues, or any other consequences of its use (see [LICENSE](LICENSE)).
