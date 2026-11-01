@@ -133,3 +133,11 @@ Check **Settings → System → Logs** in Home Assistant (filter for `zendure_sa
 | Login fails only after a Zendure app update, for everyone | Zendure rotated the signing key or enforces a newer version | Update `app_version`, or re-extract the RSA public key (see above). |
 
 When reporting an issue, include the log line (it never contains your password) and your Home Assistant version.
+
+## Disclaimer
+
+This is an **unofficial**, community-built integration. It is **not affiliated with, endorsed by, or supported by Zendure**. "Zendure" and "Satellite CT" are trademarks of their respective owners and are used here only to describe compatibility.
+
+The integration authenticates against Zendure's app API using credentials **you** own, to read data from **your own** device — i.e. for interoperability with your own hardware. Accessing the API this way may nevertheless be contrary to Zendure's terms of service; the most likely consequence of any objection would be the affected account being limited, which is why a dedicated, HA-only second account is recommended.
+
+Use at your own risk. The authors provide this software "as is", without warranty, and accept no liability for account restrictions, data issues, or any other consequences of its use (see [LICENSE](LICENSE)).
