@@ -34,7 +34,7 @@ Copy `custom_components/zendure_satellite_ct/` to your HA `/config/custom_compon
 
 ### Recommended: username + password (auto-login)
 
-The integration logs in to the Zendure cloud itself and refreshes the token automatically when it expires. No more mitmproxy, no emulator, no manual token updates.
+The integration logs in to the Zendure cloud itself and refreshes the token automatically when it expires — no manual token handling at all.
 
 Add to `configuration.yaml`:
 
@@ -68,11 +68,11 @@ sensor:
 zendure_bearer_token: "userId:UUID"
 ```
 
-The token is obtained via mitmproxy from the Zendure Android app (format `userId:UUID`). This mode does **not** refresh automatically — when the token expires the sensor goes `unavailable` until you update it. Prefer the username/password mode above.
+The token (format `userId:UUID`) is the `accessToken` returned by the Zendure login. This mode does **not** refresh automatically — when the token expires the sensor goes `unavailable` until you update it. Prefer the username/password mode above, which obtains and renews this token for you.
 
 ### Finding your device ID
 
-Use the helper script with the same credentials you put in `secrets.yaml` — no mitmproxy or emulator needed. It logs in and lists every device on the account with its numeric ID:
+Use the helper script with the same credentials you put in `secrets.yaml`. It logs in and lists every device on the account with its numeric ID:
 
 ```bash
 pip install cryptography

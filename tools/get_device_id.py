@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Find your Zendure device ID(s) using only your account credentials.
 
-No mitmproxy, no emulator. Logs in to the Zendure cloud (EU region) exactly
-like the Home Assistant integration does and prints every device on the
-account, including the numeric `id` you put into `device_id:`.
+Logs in to the Zendure cloud (EU region) exactly like the Home Assistant
+integration does and prints every device on the account, including the
+numeric `id` you put into `device_id:`.
 
 Usage:
     pip install cryptography
