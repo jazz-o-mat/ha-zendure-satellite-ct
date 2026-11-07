@@ -102,7 +102,7 @@ Put that `device_id` value into your configuration. If the list is empty, the Sa
 | `password` | yes* | — | Zendure account password |
 | `bearer_token` | yes* | — | Static blade-auth token (`userId:UUID`); alternative to username/password |
 | `device_id` | yes | — | Numeric device ID of the Satellite CT |
-| `name` | no | `Satellite CT Stromverbrauch` | Entity friendly name |
+| `name` | no | `Satellite CT Power` | Entity friendly name |
 | `zone` | no | `Europe/Berlin` | Timezone for API queries |
 | `app_version` | no | `5.8.3` | App version string embedded in the login signature (see below) |
 
@@ -128,7 +128,7 @@ Check **Settings → System → Logs** in Home Assistant (filter for `zendure_sa
 |---------|--------------|-----|
 | Sensor `unavailable` right after setup | Wrong credentials, or `device_id` not on this account | Run `tools/get_device_id.py` to confirm both the login and the ID. |
 | Log: `Zendure-Login fehlgeschlagen: Account does not exist or the password is incorrect` | Wrong `username`/`password` | Check `secrets.yaml`. Note the login uses the Zendure **account** credentials, not an app token. |
-| Log: `Zendure API lehnt Token auch nach Neu-Login ab` | Token valid but device not visible to this account | Share the Satellite CT to this account (see [Prerequisites](#prerequisites)). |
+| Log: `Zendure API still rejects the token after re-login` | Token valid but device not visible to this account | Share the Satellite CT to this account (see [Prerequisites](#prerequisites)). |
 | `get_device_id.py` prints *No devices found* | CT not shared to this account | Share the device from your primary account in the Zendure app. |
 | Sensor worked, then went `unavailable` and recovered | Normal — you logged in elsewhere with this account, the token rotated | The integration re-logs in automatically on the next poll. Keep this account HA-only. |
 | Sensor shows a stale value | Expected — the cloud API only publishes a new measurement once per minute | Nothing to fix; see *Features*. |

@@ -1,4 +1,4 @@
-"""Zendure Satellite CT – Sensor Platform."""
+"""Zendure Satellite CT – Sensor platform."""
 from __future__ import annotations
 
 import asyncio
@@ -36,11 +36,11 @@ CONF_ZONE = "zone"
 CONF_APP_VERSION = "app_version"
 CONF_POLL_INTERVAL = "poll_interval"
 
-DEFAULT_NAME = "Satellite CT Stromverbrauch"
+DEFAULT_NAME = "Satellite CT Power"
 DEFAULT_ZONE = "Europe/Berlin"
-# Standard-Abfrageintervall. Das Feld totalPower wird serverseitig etwa alle
-# 3 s fortgeschrieben, deshalb fragen wir ebenso oft ab. Per `poll_interval` in
-# der configuration.yaml überschreibbar (z. B. höher, um die Server zu schonen).
+# Default polling interval. The totalPower field is updated server-side roughly
+# every 3 s, so we poll at the same rate. Override it via `poll_interval` in
+# configuration.yaml (e.g. a higher value to go easier on the servers).
 DEFAULT_POLL_INTERVAL = 3
 MIN_POLL_INTERVAL = 1
 
@@ -48,17 +48,17 @@ BASE_URL = "https://app.zendure.tech/eu/"
 DEVICE_LIST_URL = BASE_URL + "productModule/device/queryDeviceListByConsumerId"
 DEVICE_LIST_PATH = "productModule/device/queryDeviceListByConsumerId"
 LOGIN_URL = BASE_URL + "auth/app/token"
-LOGIN_PATH = "auth/app/token"  # Pfad-Teil für die sign-Signatur
+LOGIN_PATH = "auth/app/token"  # path part used for the sign signature
 
-# appVersion, die in der sign-Signatur mitverschlüsselt wird (= versionName der
-# Zendure-Android-App). Der Server akzeptiert derzeit jeden nicht-leeren Wert,
-# der Default muss also nicht gepflegt werden. Falls Zendure künftig eine
-# bestimmte Mindestversion erzwingt, lässt sich der Wert per `app_version` in
-# der configuration.yaml überschreiben, ohne diese Datei anzufassen.
+# appVersion that is encrypted into the sign signature (= versionName of the
+# Zendure Android app). The server currently accepts any non-empty value, so the
+# default needs no maintenance. Should Zendure ever enforce a minimum version, it
+# can be overridden via `app_version` in configuration.yaml without touching this
+# file.
 DEFAULT_APP_VERSION = "5.8.3"
 
-# RSA-Public-Key (1024 bit, SPKI/DER base64) aus libzen_native.so der Zendure-App.
-# Wird benutzt, um den sign-Header für den Login zu erzeugen (RSA/ECB/PKCS1Padding).
+# RSA public key (1024 bit, SPKI/DER base64) from libzen_native.so of the Zendure
+# app. Used to build the sign header for login (RSA/ECB/PKCS1Padding).
 ZENDURE_PUBKEY_B64 = (
     "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCwoqArnVK5cuSHL3t9uf3d1CGlmcaFE/NT"
     "+t84RuMfLZzfuZbmElP3XmyywvTkNUlBdr6Za2tjVKQqKo5AVV1cxVpa+GLrLpSuH4U/zeLz"
@@ -85,12 +85,12 @@ PLATFORM_SCHEMA = vol.All(
 
 
 def _as_number(raw):
-    """Gib totalPower nur als echten Zahlenwert zurück, sonst None.
+    """Return totalPower only as a real numeric value, otherwise None.
 
-    Härtung: Der State wird direkt aus der API-Antwort gespeist. Ein nicht
-    numerischer Wert (z. B. durch eine veränderte/kompromittierte API) wird
-    verworfen, statt ungeprüft als Sensorzustand übernommen zu werden. bool
-    wird bewusst abgelehnt (in Python ist bool eine int-Unterklasse).
+    Hardening: the state is fed directly from the API response. A non-numeric
+    value (e.g. from a tampered or compromised API) is rejected instead of being
+    passed through unchecked as the sensor state. bool is deliberately rejected
+    (in Python, bool is a subclass of int).
     """
     if isinstance(raw, bool):
         return None
@@ -102,15 +102,15 @@ def _as_number(raw):
         except ValueError:
             pass
     if raw is not None:
-        _LOGGER.warning("Zendure: unerwarteter totalPower-Wert %r – verworfen", raw)
+        _LOGGER.warning("Zendure: unexpected totalPower value %r – discarded", raw)
     return None
 
 
 def _build_sign(app_version: str, path: str, timestamp: int) -> str:
-    """Erzeuge den sign-Header: Base64(RSA/PKCS1v15(pubkey, 'appVer./path/ts')).
+    """Build the sign header: Base64(RSA/PKCS1v15(pubkey, 'appVer./path/ts')).
 
-    Läuft synchron (RSA-1024-Verschlüsselung, wenige Mikrosekunden) und wird vom
-    Aufrufer im Executor ausgeführt, um den Event-Loop nicht zu blockieren.
+    Runs synchronously (RSA-1024 encryption, a few microseconds) and is called
+    from the executor so it does not block the event loop.
     """
     from cryptography.hazmat.primitives.asymmetric import padding
     from cryptography.hazmat.primitives.serialization import load_der_public_key
@@ -150,7 +150,7 @@ async def async_setup_platform(
 
 
 class ZendureCTCoordinator(DataUpdateCoordinator):
-    """Coordinator für Zendure Satellite CT API-Polling mit Auto-Login."""
+    """Coordinator for Zendure Satellite CT API polling with auto-login."""
 
     def __init__(
         self,
@@ -177,8 +177,8 @@ class ZendureCTCoordinator(DataUpdateCoordinator):
         self._username = username
         self._password = password
         self._app_version = app_version
-        # Statischer Token aus der Konfiguration (optional). Wird bei
-        # username/password-Betrieb durch den Login-Token überschrieben.
+        # Static token from the configuration (optional). In username/password
+        # mode it is overwritten by the login token.
         self._token = bearer_token
         self._login_lock = asyncio.Lock()
 
@@ -187,14 +187,14 @@ class ZendureCTCoordinator(DataUpdateCoordinator):
         return bool(self._username and self._password)
 
     async def _login(self) -> None:
-        """Logge dich bei Zendure ein und speichere den frischen Token."""
+        """Log in to Zendure and store the fresh token."""
         if not self._can_login:
             raise UpdateFailed(
-                "Token abgelaufen und kein username/password zum automatischen "
-                "Neu-Einloggen in secrets.yaml hinterlegt."
+                "Token expired and no username/password configured in "
+                "secrets.yaml for automatic re-login."
             )
         async with self._login_lock:
-            timestamp = int(time.time())  # Sekunden (App: currentTimeMillis()/1000)
+            timestamp = int(time.time())  # seconds (app: currentTimeMillis()/1000)
             sign = await self.hass.async_add_executor_job(
                 _build_sign, self._app_version, LOGIN_PATH, timestamp
             )
@@ -220,27 +220,27 @@ class ZendureCTCoordinator(DataUpdateCoordinator):
                     ) as resp:
                         data = await resp.json(content_type=None)
             except (aiohttp.ClientError, asyncio.TimeoutError) as err:
-                raise UpdateFailed(f"Login-Netzwerkfehler: {err}") from err
+                raise UpdateFailed(f"Login network error: {err}") from err
 
             if not data.get("success"):
                 raise UpdateFailed(
-                    f"Zendure-Login fehlgeschlagen: {data.get('msg')} "
+                    f"Zendure login failed: {data.get('msg')} "
                     f"(code {data.get('code')})"
                 )
 
             token = (data.get("data") or {}).get("accessToken")
             if not token:
-                raise UpdateFailed("Zendure-Login lieferte keinen accessToken")
+                raise UpdateFailed("Zendure login returned no accessToken")
 
             self._token = token
-            _LOGGER.info("Zendure: neuer Token per Auto-Login erhalten")
+            _LOGGER.info("Zendure: obtained a new token via auto-login")
 
     async def _fetch_power(self):
-        """Hole die aktuelle Gesamtleistung (totalPower) über die Geräteliste.
+        """Fetch the current total power (totalPower) via the device list.
 
-        Gibt (expired, value) zurück. expired=True signalisiert einen
-        abgelaufenen/ungültigen Token (HTTP 401 oder leere Geräteliste nach
-        einem Fremd-Login), der ein Neu-Einloggen auslöst.
+        Returns (expired, value). expired=True signals an expired/invalid token
+        (HTTP 401, or an empty device list after a foreign login) and triggers a
+        re-login.
         """
         timestamp = int(time.time())
         sign = await self.hass.async_add_executor_job(
@@ -266,17 +266,17 @@ class ZendureCTCoordinator(DataUpdateCoordinator):
                         raise UpdateFailed(f"Zendure API HTTP {resp.status}")
                     data = await resp.json(content_type=None)
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
-            raise UpdateFailed(f"Netzwerkfehler: {err}") from err
+            raise UpdateFailed(f"Network error: {err}") from err
 
         if not data.get("success"):
             code = data.get("code")
             if code in (401, 402, 403):
                 return True, None
-            raise UpdateFailed(f"Zendure API Fehler: {data.get('msg')}")
+            raise UpdateFailed(f"Zendure API error: {data.get('msg')}")
 
         devices = data.get("data") or []
-        # Leere Liste trotz success=True: der Token wurde durch einen anderen
-        # Login (Handy-App o. ä.) entwertet → wie abgelaufen behandeln.
+        # Empty list despite success=True: the token was invalidated by another
+        # login (phone app etc.) → treat it as expired.
         if not devices:
             return True, None
 
@@ -284,7 +284,7 @@ class ZendureCTCoordinator(DataUpdateCoordinator):
             if dev.get("id") == self._device_id:
                 return False, _as_number(dev.get("totalPower"))
         raise UpdateFailed(
-            f"Gerät {self._device_id} nicht in der Zendure-Geräteliste gefunden"
+            f"Device {self._device_id} not found in the Zendure device list"
         )
 
     async def _async_update_data(self):
@@ -293,28 +293,27 @@ class ZendureCTCoordinator(DataUpdateCoordinator):
 
         expired, value = await self._fetch_power()
         if expired:
-            # Token abgelaufen/entwertet → einmal neu einloggen und erneut versuchen.
-            _LOGGER.info("Zendure: Token ungültig, logge neu ein")
+            # Token expired/invalidated → log in again once and retry.
+            _LOGGER.info("Zendure: token invalid, logging in again")
             await self._login()
             expired, value = await self._fetch_power()
             if expired:
                 raise UpdateFailed(
-                    "Zendure API lehnt Token auch nach Neu-Login ab"
+                    "Zendure API still rejects the token after re-login"
                 )
 
-        # Die API liefert gelegentlich 0 (oder null) als Platzhalter für die
-        # gerade laufende Messung. Bei einem Haushalts-CT ist echte 0-Leistung
-        # praktisch nie real, daher behandeln wir sie als "noch kein frischer
-        # Wert" und behalten den letzten echten Messwert, um kurze Einbrüche im
-        # Graphen zu vermeiden.
+        # The API occasionally returns 0 (or null) as a placeholder for the
+        # sample currently in progress. For a household CT a true 0 W reading is
+        # practically never real, so we treat it as "no fresh value yet" and keep
+        # the last real reading to avoid short dips in the graph.
         if value in (None, 0, 0.0):
-            return self.data  # beim Start None -> Sensor bleibt kurz unbekannt
+            return self.data  # None at startup -> sensor stays briefly unknown
 
         return value
 
 
 class ZendureCTPowerSensor(CoordinatorEntity, SensorEntity):
-    """Aktueller Leistungswert des Satellite CT in Watt."""
+    """Current power value of the Satellite CT in watts."""
 
     _attr_device_class = SensorDeviceClass.POWER
     _attr_state_class = SensorStateClass.MEASUREMENT
