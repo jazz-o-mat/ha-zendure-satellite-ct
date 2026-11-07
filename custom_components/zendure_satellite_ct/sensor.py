@@ -84,6 +84,28 @@ PLATFORM_SCHEMA = vol.All(
 )
 
 
+def _as_number(raw):
+    """Gib totalPower nur als echten Zahlenwert zurück, sonst None.
+
+    Härtung: Der State wird direkt aus der API-Antwort gespeist. Ein nicht
+    numerischer Wert (z. B. durch eine veränderte/kompromittierte API) wird
+    verworfen, statt ungeprüft als Sensorzustand übernommen zu werden. bool
+    wird bewusst abgelehnt (in Python ist bool eine int-Unterklasse).
+    """
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, (int, float)):
+        return raw
+    if isinstance(raw, str):
+        try:
+            return float(raw)
+        except ValueError:
+            pass
+    if raw is not None:
+        _LOGGER.warning("Zendure: unerwarteter totalPower-Wert %r – verworfen", raw)
+    return None
+
+
 def _build_sign(app_version: str, path: str, timestamp: int) -> str:
     """Erzeuge den sign-Header: Base64(RSA/PKCS1v15(pubkey, 'appVer./path/ts')).
 
@@ -260,7 +282,7 @@ class ZendureCTCoordinator(DataUpdateCoordinator):
 
         for dev in devices:
             if dev.get("id") == self._device_id:
-                return False, dev.get("totalPower")
+                return False, _as_number(dev.get("totalPower"))
         raise UpdateFailed(
             f"Gerät {self._device_id} nicht in der Zendure-Geräteliste gefunden"
         )
