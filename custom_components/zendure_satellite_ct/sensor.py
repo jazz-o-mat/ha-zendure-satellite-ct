@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
-from datetime import date, timedelta
+from datetime import timedelta
 import logging
 import time
 
@@ -34,13 +34,19 @@ CONF_BEARER_TOKEN = "bearer_token"
 CONF_DEVICE_ID = "device_id"
 CONF_ZONE = "zone"
 CONF_APP_VERSION = "app_version"
+CONF_POLL_INTERVAL = "poll_interval"
 
 DEFAULT_NAME = "Satellite CT Stromverbrauch"
 DEFAULT_ZONE = "Europe/Berlin"
-SCAN_INTERVAL = timedelta(seconds=30)
+# Standard-Abfrageintervall. Das Feld totalPower wird serverseitig etwa alle
+# 3 s fortgeschrieben, deshalb fragen wir ebenso oft ab. Per `poll_interval` in
+# der configuration.yaml überschreibbar (z. B. höher, um die Server zu schonen).
+DEFAULT_POLL_INTERVAL = 3
+MIN_POLL_INTERVAL = 1
 
 BASE_URL = "https://app.zendure.tech/eu/"
-ENERGY_URL = BASE_URL + "tdengine/device/smartct/energy"
+DEVICE_LIST_URL = BASE_URL + "productModule/device/queryDeviceListByConsumerId"
+DEVICE_LIST_PATH = "productModule/device/queryDeviceListByConsumerId"
 LOGIN_URL = BASE_URL + "auth/app/token"
 LOGIN_PATH = "auth/app/token"  # Pfad-Teil für die sign-Signatur
 
@@ -69,6 +75,9 @@ PLATFORM_SCHEMA = vol.All(
             vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
             vol.Optional(CONF_ZONE, default=DEFAULT_ZONE): cv.string,
             vol.Optional(CONF_APP_VERSION, default=DEFAULT_APP_VERSION): cv.string,
+            vol.Optional(CONF_POLL_INTERVAL, default=DEFAULT_POLL_INTERVAL): vol.All(
+                vol.Coerce(int), vol.Range(min=MIN_POLL_INTERVAL)
+            ),
         }
     ),
     cv.has_at_least_one_key(CONF_BEARER_TOKEN, CONF_USERNAME),
@@ -111,6 +120,7 @@ async def async_setup_platform(
         username=config.get(CONF_USERNAME),
         password=config.get(CONF_PASSWORD),
         app_version=config[CONF_APP_VERSION],
+        poll_interval=config[CONF_POLL_INTERVAL],
     )
     await coordinator.async_refresh()
 
@@ -131,12 +141,13 @@ class ZendureCTCoordinator(DataUpdateCoordinator):
         username,
         password,
         app_version,
+        poll_interval=DEFAULT_POLL_INTERVAL,
     ):
         super().__init__(
             hass,
             _LOGGER,
             name="Zendure Satellite CT",
-            update_interval=SCAN_INTERVAL,
+            update_interval=timedelta(seconds=poll_interval),
         )
         self._session = session
         self._device_id = device_id
@@ -202,25 +213,30 @@ class ZendureCTCoordinator(DataUpdateCoordinator):
             self._token = token
             _LOGGER.info("Zendure: neuer Token per Auto-Login erhalten")
 
-    async def _fetch_energy(self):
-        """Hole die Energie-Daten mit dem aktuellen Token. True-Rückgabe = 401."""
-        today = date.today().isoformat()
+    async def _fetch_power(self):
+        """Hole die aktuelle Gesamtleistung (totalPower) über die Geräteliste.
+
+        Gibt (expired, value) zurück. expired=True signalisiert einen
+        abgelaufenen/ungültigen Token (HTTP 401 oder leere Geräteliste nach
+        einem Fremd-Login), der ein Neu-Einloggen auslöst.
+        """
+        timestamp = int(time.time())
+        sign = await self.hass.async_add_executor_job(
+            _build_sign, self._app_version, DEVICE_LIST_PATH, timestamp
+        )
         headers = {
             "blade-auth": f"bearer {self._token}",
             "Content-Type": "application/json",
-        }
-        payload = {
-            "deviceId": self._device_id,
-            "beginDate": today,
-            "endDate": today,
-            "circuitType": 1,
-            "zone": self._zone,
-            "type": 0,
+            "appVersion": self._app_version,
+            "timestamps": str(timestamp),
+            "sign": sign,
+            "style": "1",
+            "Accept-Language": "en",
         }
         try:
             async with asyncio.timeout(30):
                 async with self._session.post(
-                    ENERGY_URL, json=payload, headers=headers
+                    DEVICE_LIST_URL, json={}, headers=headers
                 ) as resp:
                     if resp.status == 401:
                         return True, None
@@ -230,39 +246,49 @@ class ZendureCTCoordinator(DataUpdateCoordinator):
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             raise UpdateFailed(f"Netzwerkfehler: {err}") from err
 
-        # Abgelaufener Token kann sich auch als success=False im Body zeigen.
         if not data.get("success"):
             code = data.get("code")
             if code in (401, 402, 403):
                 return True, None
             raise UpdateFailed(f"Zendure API Fehler: {data.get('msg')}")
 
-        return False, data
+        devices = data.get("data") or []
+        # Leere Liste trotz success=True: der Token wurde durch einen anderen
+        # Login (Handy-App o. ä.) entwertet → wie abgelaufen behandeln.
+        if not devices:
+            return True, None
+
+        for dev in devices:
+            if dev.get("id") == self._device_id:
+                return False, dev.get("totalPower")
+        raise UpdateFailed(
+            f"Gerät {self._device_id} nicht in der Zendure-Geräteliste gefunden"
+        )
 
     async def _async_update_data(self):
         if not self._token:
             await self._login()
 
-        expired, data = await self._fetch_energy()
+        expired, value = await self._fetch_power()
         if expired:
-            # Token abgelaufen → einmal neu einloggen und erneut versuchen.
-            _LOGGER.info("Zendure: Token abgelaufen, logge neu ein")
+            # Token abgelaufen/entwertet → einmal neu einloggen und erneut versuchen.
+            _LOGGER.info("Zendure: Token ungültig, logge neu ein")
             await self._login()
-            expired, data = await self._fetch_energy()
+            expired, value = await self._fetch_power()
             if expired:
                 raise UpdateFailed(
                     "Zendure API lehnt Token auch nach Neu-Login ab"
                 )
 
-        entries = data.get("data", {}).get("data", {}).get("1", [])
-        if not entries:
-            return None
+        # Die API liefert gelegentlich 0 (oder null) als Platzhalter für die
+        # gerade laufende Messung. Bei einem Haushalts-CT ist echte 0-Leistung
+        # praktisch nie real, daher behandeln wir sie als "noch kein frischer
+        # Wert" und behalten den letzten echten Messwert, um kurze Einbrüche im
+        # Graphen zu vermeiden.
+        if value in (None, 0, 0.0):
+            return self.data  # beim Start None -> Sensor bleibt kurz unbekannt
 
-        # Letzten echten Wert nehmen (API schreibt 0 als Platzhalter für die laufende Minute)
-        for entry in reversed(entries):
-            if entry.get("data") is not None and entry["data"] > 0:
-                return entry["data"]
-        return 0
+        return value
 
 
 class ZendureCTPowerSensor(CoordinatorEntity, SensorEntity):

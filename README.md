@@ -5,8 +5,10 @@ Custom component for Home Assistant that reads current power consumption from a 
 ## Features
 
 - Reports current power consumption in Watts (W)
-- Polls the API every 30 seconds for fast state updates in HA
-- **Effective data resolution: ~60 seconds** — the Zendure cloud API publishes new measurements once per minute, so the displayed value changes at most every 60 seconds regardless of polling interval
+- Reads the live `totalPower` field from the device-list endpoint, which the
+  Zendure cloud updates roughly **every 3 seconds** (the same value the app's
+  overview shows) — not the minute-resolution energy-history endpoint
+- Polls every **3 seconds** by default; configurable via `poll_interval`
 - Uses Zendure cloud API (EU region)
 
 ## Prerequisites
@@ -44,6 +46,7 @@ sensor:
     username: !secret zendure_username
     password: !secret zendure_password
     device_id: YOUR_DEVICE_ID
+    # poll_interval: 3   # seconds; optional, default 3, minimum 1
 ```
 
 Add to `secrets.yaml`:
@@ -53,7 +56,7 @@ zendure_username: "second-account@example.com"
 zendure_password: "your-password"
 ```
 
-> **Tip:** Use a dedicated second Zendure account that only shares the CT device. Logging in anywhere else with that account rotates the token — with auto-login the integration simply logs back in on the next poll, but a shared-only account keeps things clean.
+> **Tip:** Use a dedicated second Zendure account that only shares the CT device. Logging in anywhere else with that account rotates the token — with auto-login the integration simply logs back in on the next poll, but a shared-only account keeps things clean. This matters more now that polling runs every few seconds: if the phone app uses the same account, each app login invalidates HA's token and forces a re-login on the very next poll, so keep the HA account separate.
 
 ### Alternative: static bearer token (legacy)
 
